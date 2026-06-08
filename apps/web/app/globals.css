@@ -1,0 +1,125 @@
+@import url('https://fonts.googleapis.com/css2?family=Figtree:ital,wght@0,300..900;1,300..900&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --grad-from: #256199;
+  --grad-to: #3DA1FF;
+  --gradient: linear-gradient(105deg, #256199 0%, #3DA1FF 100%);
+  --brand-blue: #3DA1FF;
+  --brand-deep: #256199;
+  --brand-mid: #2E7CC1;
+  --ink: #232635;
+  --ink-soft: #454a5c;
+  --muted: #7c8294;
+  --canvas: #cfe1f5;
+  --canvas-2: #dceaf8;
+  --surface: #ffffff;
+  --black: #0b0b0d;
+  --line: #e7eef7;
+  --line-2: #dbe6f3;
+  --success: #27ae8a;
+  --warning: #f5a524;
+  --error: #ef4655;
+  --info: #3DA1FF;
+  --r-pill: 999px;
+  --r-card: 22px;
+  --r-md: 14px;
+  --r-sm: 10px;
+  --sh-sm: 0 4px 14px rgba(37, 97, 153, 0.08);
+  --sh-md: 0 14px 40px rgba(37, 97, 153, 0.12);
+  --sh-lg: 0 24px 70px rgba(37, 97, 153, 0.16);
+  --maxw: 1120px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Figtree', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  color: var(--ink);
+  background:
+    radial-gradient(1200px 600px at 85% -5%, #e9f3ff 0%, transparent 55%),
+    radial-gradient(900px 500px at -10% 10%, #eaf2fd 0%, transparent 50%),
+    var(--canvas);
+  min-height: 100vh;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--line-2);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+}
+
+/* Animated gradient shimmer for loading states */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.shimmer {
+  background: linear-gradient(90deg, var(--line) 25%, var(--canvas-2) 37%, var(--line) 63%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+/* Fade in animation */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: none; }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.4s cubic-bezier(0.2, 0.7, 0.2, 1) forwards;
+}
+
+/* Stagger animation delays */
+.stagger-1 { animation-delay: 0.05s; }
+.stagger-2 { animation-delay: 0.10s; }
+.stagger-3 { animation-delay: 0.15s; }
+.stagger-4 { animation-delay: 0.20s; }
+
+/* Pulse animation for live indicators */
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(1.2); }
+}
+
+.pulse-dot {
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+
+/* Custom focus ring matching design system */
+.focus-ring:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 4px rgba(61, 161, 255, 0.16);
+}
+
+/* Table hover effect */
+.table-row-hover:hover {
+  background-color: #f7fafd;
+}
+
+@layer utilities {
+  .gradient-text {
+    @apply bg-gradient-to-r from-brand-deep to-brand-blue bg-clip-text text-transparent;
+  }
+}
