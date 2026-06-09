@@ -14,24 +14,58 @@
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────────────┐
-│                    Frontend                          │
-│    Next.js 14 (App Router) + Tailwind + shadcn/ui    │
-│    Figtree Font + Samayak Design System Tokens       │
-├──────────────────────────────────────────────────────┤
-│                    API Layer                         │
-│    Next.js API Routes + Supabase Client              │
-│    /api/health  /api/pdf-ingestions  /api/bulk-imports│
-├──────────┬───────────────────────────┬───────────────┤
-│ Supabase │  PostgreSQL + RLS         │  BullMQ       │
-│          │  Auth + Storage           │  Worker       │
-│          │  Realtime Subscriptions   │  Redis 7      │
-└──────────┴───────────────────────────┴───────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│                        Frontend                              │
+│      Next.js 14 (App Router) + Tailwind + shadcn/ui          │
+│      Figtree Font + Samayak Design System Tokens             │
+├──────────────────────────────────────────────────────────────┤
+│                        API Layer                             │
+│      Next.js API Routes + Supabase Client                    │
+│      /api/health  /api/pdf-ingestions  /api/bulk-imports     │
+├──────────┬───────────────────────────────┬───────────────────┤
+│ Supabase │  PostgreSQL + RLS             │   Local OCR       │
+│          │  Auth + Storage               │   Tesseract.js    │
+│          │  Realtime Subscriptions       │   pdf-to-png-conv │
+└──────────┴───────────────────────────────┴───────────────────┘
 ```
 
 ### Trade-off Defense
 
-Used **Supabase** (managed Postgres + Auth + Storage + Realtime) to eliminate boilerplate and gain RLS-level security and live subscriptions out of the box, while keeping the assignment's **BullMQ + Redis** worker pattern for heavy async PDF parsing — preserving the non-blocking API thread principle.
+Used **Supabase** (managed Postgres + Auth + Storage + Realtime) to eliminate boilerplate and gain RLS-level security and live subscriptions out of the box. Leveraged **Tesseract.js** paired with **pdf-to-png-converter** inside the API thread to perform zero-dependency, local OCR rendering. This entirely removes dependencies on external third-party OCR keys (e.g., OCR.space) and prevents rate-limit failures on large scanned PDFs.
+
+---
+
+## Advanced Ingestion Pipeline
+
+The platform features a highly advanced, self-healing **PDF Timetable Ingestion Pipeline** optimized for BIT Mesra's layout formats:
+
+```
+[ Upload PDF ] ──► [ Check Text Layer ] 
+                       │
+                       ├─► select-text ──► [ standard pdf-parse ] ────────┐
+                       │                                                  ▼
+                       └─► empty/scan  ──► [ pdf-to-png-converter ] ──► [ Tesseract.js ]
+                                                                          │
+  ┌───────────────────────────────────────────────────────────────────────┘
+  ▼
+[ Groq LLM Pass 1 ] ──► Extract raw grid blocks (e.g., "CD", "AIML", room "219")
+  │
+  ▼
+[ Groq LLM Pass 2 ] ──► Resolve abbreviations using course-faculty mapping tables
+  │
+  ▼
+[ Fuzzy Matching ] ──► Match courses, rooms & faculty (Levenshtein + Token Overlap)
+  │
+  ▼
+[ DB Integration ] ──► Insert / Update timetable entries (allows null rooms/faculty, 3-period lab slots)
+```
+
+1. **Local OCR fallback**: If `pdf-parse` extracts insufficient text (<50 chars), the PDF pages are rasterized into high-resolution PNGs at `viewportScale: 2.0` and fed page-by-page to a local **Tesseract.js** worker running on Node.js threads.
+2. **Two-Pass Groq LLM Strategy**: 
+   * **Pass 1 (Grid Extraction)**: Isolates the raw timetable grid day, period, room, section, and abbreviation.
+   * **Pass 2 (Course Resolution)**: Parses the course-to-abbreviation mapping table from the bottom of the document and maps grid labels (e.g., `CD` -> `CS333`, `CNS` -> `IT349`).
+3. **Robust Fuzzy Matching**: Uses combined **Levenshtein distance (0.55 threshold)**, **token overlap**, and **substring matching** to match OCR-garbled names (e.g., `Dr. Itu Snigh` matches `Dr. Itu Singh`).
+4. **Self-Healing Inserts**: Auto-creates missing courses, sections, and rooms. If room numbers or faculty names cannot be resolved, entries are created with `null` references instead of discarding the row.
 
 ---
 
@@ -44,7 +78,7 @@ Used **Supabase** (managed Postgres + Auth + Storage + Realtime) to eliminate bo
 | **Rooms** | CRUD with type badges (classroom/lab), department filter, capacity validation |
 | **Courses** | Mandatory branch+semester filter (URL-persisted), zero-credit flagging, type badges |
 | **Faculty** | Role-colored badges (admin=blue, dean=indigo, hod=purple, coordinator=teal, professor=slate), soft delete with restore |
-| **PDF Ingestion** | Drag-drop upload → BullMQ queue → Parse PDF → Fuzzy match faculty → Integrate timetable entries → Realtime status |
+| **PDF Ingestion** | Local page-by-page OCR + Groq LLM abbreviation resolution + database auto-matching |
 | **Bulk Import** | CSV/XLSX upload with entity type selector, per-row validation, duplicate handling |
 | **Health Check** | `/api/health` — DB, Redis, Queue status with latency metrics |
 | **Auth + RLS** | Supabase Auth with row-level security policies. Role-based access control. |
@@ -63,7 +97,7 @@ Used **Supabase** (managed Postgres + Auth + Storage + Realtime) to eliminate bo
 ### 1. Clone & Install
 
 ```bash
-git clone https://github.com/YOUR_REPO/Samayak_Admin_Panel.git
+git clone https://github.com/Faraz011/Samayak_Admin_Panel.git
 cd Samayak_Admin_Panel
 pnpm install
 ```
@@ -73,7 +107,7 @@ pnpm install
 ```bash
 cp .env.example apps/web/.env.local
 cp .env.example apps/worker/.env
-# Edit with your Supabase credentials
+# Edit with your Supabase credentials and GROQ_API_KEY
 ```
 
 ### 3. Database Setup
@@ -146,7 +180,7 @@ samayak-admin/
 │   │   │   ├── (auth)/login/  # Login page
 │   │   │   └── api/           # Health, PDF, Bulk APIs
 │   │   ├── components/ui/     # Samayak-themed components
-│   │   ├── lib/supabase/      # Client helpers
+│   │   ├── lib/               # fuzzy-match, pdf-processor
 │   │   └── scripts/seed.ts    # Demo data seeder
 │   └── worker/                # BullMQ + Redis worker
 │       └── src/
@@ -191,3 +225,4 @@ Built on the [Samayak Design System](https://serveranugatai-sudo.github.io/Samay
 ## License
 
 MIT — Built for the Anugat AI hiring assignment.
+

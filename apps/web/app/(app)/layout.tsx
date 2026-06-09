@@ -127,7 +127,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             <img src="/anugat_logo.png" alt="Anugat AI" className="w-full h-full object-contain p-1" />
           </div>
           <div>
-            <h2 className="text-[17px] font-extrabold tracking-tight text-ink leading-tight">Anugat AI</h2>
+            <h2 className="text-[17px] font-extrabold tracking-tight text-ink leading-tight">Samayak</h2>
             <p className="text-[11px] font-semibold text-muted">Admin Panel</p>
           </div>
           <button
