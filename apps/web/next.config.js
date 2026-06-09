@@ -17,6 +17,7 @@ const nextConfig = {
       'pdfjs-dist',
       'pdf-to-png-converter',
       'canvas',
+      '@napi-rs/canvas',
     ],
   },
   images: {
