@@ -101,6 +101,9 @@ importers:
       tesseract.js:
         specifier: ^7.0.0
         version: 7.0.0
+      tesseract.js-core:
+        specifier: 7.0.0
+        version: 7.0.0
       xlsx:
         specifier: ^0.18.5
         version: 0.18.5

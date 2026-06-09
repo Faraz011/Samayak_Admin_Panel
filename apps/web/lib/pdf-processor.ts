@@ -29,12 +29,14 @@ export async function parseTimetablePdf(base64Content: string): Promise<ParseRes
   // --- Step 1: Extract text ---
   let parsedText = '';
   let ocrUsed = false;
+  const errors: Array<{ line: number; message: string }> = [];
 
   try {
     const result = await pdfParse(buffer);
     parsedText = result.text || '';
   } catch (pdfErr: any) {
     console.warn('⚠️ pdf-parse failed:', pdfErr.message);
+    errors.push({ line: 0, message: `pdf-parse failed: ${pdfErr.message}` });
   }
 
   // If pdf-parse returned too little text, try OCR
@@ -48,13 +50,20 @@ export async function parseTimetablePdf(base64Content: string): Promise<ParseRes
       }
     } catch (ocrErr: any) {
       console.error('⚠️ Tesseract.js OCR failed:', ocrErr.message);
+      errors.push({ line: 0, message: `Tesseract.js OCR failed: ${ocrErr.message}` });
+      if (ocrErr.stack) {
+        errors.push({ line: 0, message: `OCR Stack: ${ocrErr.stack.substring(0, 500)}` });
+      }
     }
   }
 
   if (!parsedText || parsedText.trim().length < 30) {
     return {
       rows: [],
-      errors: [{ line: 0, message: 'PDF contains no readable text. Both pdf-parse and Tesseract OCR failed to extract content.' }],
+      errors: [
+        ...errors,
+        { line: 0, message: 'PDF contains no readable text. Both pdf-parse and Tesseract OCR failed to extract content.' }
+      ],
       method: 'regex-fallback',
       rawText: parsedText || '(empty)',
     };

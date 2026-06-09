@@ -8,7 +8,22 @@ dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 const nextConfig = {
   transpilePackages: ['@samayak/shared', '@samayak/db'],
   experimental: {
-    serverComponentsExternalPackages: ['pino', 'bullmq', 'ioredis', 'tesseract.js', 'pdfjs-dist', 'pdf-to-png-converter'],
+    serverComponentsExternalPackages: [
+      'pino',
+      'bullmq',
+      'ioredis',
+      'tesseract.js',
+      'tesseract.js-core',
+      'pdfjs-dist',
+      'pdf-to-png-converter'
+    ],
+  },
+  outputFileTracingIncludes: {
+    '/api/**/*': [
+      'node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs',
+      'node_modules/tesseract.js/src/**/*',
+      'node_modules/tesseract.js-core/**/*',
+    ],
   },
   images: {
     domains: ['urgtpxnrutgeiyuxkawx.supabase.co'],
