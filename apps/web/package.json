@@ -28,8 +28,6 @@
     "ioredis": "^5.4.0",
     "lucide-react": "^0.460.0",
     "next": "14.2.18",
-    "@napi-rs/canvas": "1.0.0",
-    "@napi-rs/canvas-linux-x64-gnu": "1.0.0",
     "pdf-parse": "^1.1.1",
     "pdf-to-png-converter": "^4.1.0",
     "pdfjs-dist": "6.0.227",

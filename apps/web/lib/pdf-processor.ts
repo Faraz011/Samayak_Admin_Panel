@@ -1,19 +1,12 @@
-// Force Next.js Node File Trace (NFT) to bundle @napi-rs/canvas on Vercel.
-// We use __non_webpack_require__ to bypass Webpack's bundling/parsing of native binaries,
-// ensuring the Next.js compiler compiles successfully while still tracing the dependency.
-// Force Next.js Node File Trace (NFT) to bundle @napi-rs/canvas on Vercel.
-// We use __non_webpack_require__ to bypass Webpack's bundling/parsing of native binaries,
-// ensuring the Next.js compiler compiles successfully.
-if (process.env.NODE_ENV === 'production') {
-  try {
-    const req = typeof (globalThis as any).__non_webpack_require__ !== 'undefined' 
-      ? (globalThis as any).__non_webpack_require__ 
-      : require;
-    req('@napi-rs/canvas');
-    req('@napi-rs/canvas-linux-x64-gnu');
-  } catch (e) {
-    // Ignore runtime failures
-  }
+// ============================================================
+// Disable canvas rendering for pdfjs-dist in Node.js/Vercel
+// pdfjs will use text extraction instead of canvas rendering
+// ============================================================
+if (typeof window === 'undefined') {
+  // Server-side: disable canvas to avoid native module errors
+  (globalThis as any).pdfjsDisableAutoFetch = true;
+  (globalThis as any).pdfjsDisableStream = true;
+  (globalThis as any).pdfjsCanvasMaxAreaSize = 0; // Disable canvas rendering
 }
 
 // ============================================================
@@ -113,9 +106,17 @@ export interface ParseResult {
 async function extractTextWithPdfJs(buffer: Buffer): Promise<string> {
   await _pdfjsWorkerReady;
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  
+  // Disable rendering in Node.js environment - text extraction only
+  if (typeof window === 'undefined') {
+    pdfjs.GlobalWorkerOptions.useSystemFonts = false;
+  }
+  
   const loadingTask = pdfjs.getDocument({
     data: new Uint8Array(buffer),
     useWorkerFetch: false,
+    disableAutoFetch: true,
+    disableStream: true,
   });
   
   const doc = await loadingTask.promise;
@@ -234,6 +235,9 @@ async function runTesseractOCR(pdfBuffer: Buffer): Promise<string> {
     // Ensure pdfjs worker is pre-loaded before pdf-to-png-converter uses it
     await _pdfjsWorkerReady;
 
+    // Disable canvas for Node.js to avoid native module errors
+    (globalThis as any).pdfjsCanvasMaxAreaSize = 0;
+    
     const { pdfToPng } = await import('pdf-to-png-converter');
     const pngPages = await pdfToPng(pdfBuffer, { viewportScale: 2.0 });
     console.log(`Successfully converted PDF to ${pngPages.length} PNG pages.`);
@@ -251,6 +255,10 @@ async function runTesseractOCR(pdfBuffer: Buffer): Promise<string> {
     return fullText;
   } catch (err: any) {
     console.error('⚠️ Tesseract OCR with PDF conversion failed:', err.message);
+    // Check if it's a canvas-related error
+    if (err.message?.includes('canvas') || err.message?.includes('Canvas')) {
+      console.error('Canvas unavailable - this is expected in serverless environments.');
+    }
     throw err;
   }
 }
