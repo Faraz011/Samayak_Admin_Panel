@@ -4,9 +4,17 @@ import { NextResponse, type NextRequest } from 'next/server';
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
 
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    console.warn('⚠️ NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY environment variables are missing.');
+    return supabaseResponse;
+  }
+
   const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    supabaseUrl,
+    supabaseAnonKey,
     {
       cookies: {
         getAll() {
@@ -25,9 +33,13 @@ export async function updateSession(request: NextRequest) {
     }
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  let user = null;
+  try {
+    const { data } = await supabase.auth.getUser();
+    user = data?.user;
+  } catch (err) {
+    console.error('Error fetching user in middleware:', err);
+  }
 
   // Redirect unauthenticated users to login (except for auth & api routes)
   const isAuthRoute = request.nextUrl.pathname.startsWith('/login');
@@ -46,8 +58,11 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Add correlation ID header
-  const correlationId = `cor_${crypto.randomUUID().replace(/-/g, '').substring(0, 16)}`;
+  // Add correlation ID header safely
+  const uuid = (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
+    ? crypto.randomUUID()
+    : Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+  const correlationId = `cor_${uuid.replace(/-/g, '').substring(0, 16)}`;
   
   // Set in request headers to propagate downstream to API routes & Server Components
   const requestHeaders = new Headers(request.headers);
