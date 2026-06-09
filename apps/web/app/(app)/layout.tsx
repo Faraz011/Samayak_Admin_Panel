@@ -242,71 +242,71 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           </div>
         </div>
 
-        {/* Topbar (desktop) */}
-        <header className="sticky top-0 z-30 hidden lg:flex items-center justify-between bg-white/80 backdrop-blur-xl border-b border-line px-8 py-4">
-          {/* Left: Pathname & Session */}
-          <div className="flex items-center gap-3">
-            <span className="font-extrabold text-[16px] text-ink capitalize tracking-tight">
-              {pathname === '/' || pathname === '/dashboard' ? 'Dashboard' : pathname.replace('/', '').replaceAll('-', ' ')}
-            </span>
-            <div className="h-4 w-px bg-line" />
-            <span className="text-[11px] font-bold text-primary bg-primary/10 px-2.5 py-1 rounded-full">
-              Spring 2026
-            </span>
-            {profile && (
-              <>
-                <div className="h-4 w-px bg-line" />
-                <span
-                  className="text-[10.5px] font-extrabold px-2.5 py-1 rounded-full"
-                  style={{ color: roleConfig?.color, background: roleConfig?.bg }}
-                >
-                  {roleConfig?.label}
-                </span>
-              </>
-            )}
-          </div>
-
-          {/* Right: DB status, Ingestion status, Profile */}
-          <div className="flex items-center gap-4">
-            {latestIngestion && (latestIngestion.status === 'queued' || latestIngestion.status === 'parsing' || latestIngestion.status === 'integrating') && (
-              <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-800 px-3 py-1 rounded-[12px] text-[12px] font-semibold animate-pulse">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                Ingesting Timetable...
-              </div>
-            )}
-            {latestIngestion && latestIngestion.status === 'done' && (
-              <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 text-emerald-800 px-3 py-1 rounded-[12px] text-[12px] font-semibold">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                Timetable Synced
-              </div>
-            )}
-
-            <div className="flex items-center gap-2 px-1">
-              <span className={`w-2 h-2 rounded-full ${dbStatus === 'online' ? '' : ''}`} />
-              <span className="text-[11.5px] font-semibold text-muted">
-                {dbStatus === 'online' ? '' : ''}
-              </span>
-            </div>
-
-            {profile && (
-              <div className="flex items-center gap-2.5 pl-3 border-l border-line">
-                <div
-                  className="w-8 h-8 rounded-[10px] flex items-center justify-center text-white text-[12px] font-bold flex-shrink-0"
-                  style={{ background: roleConfig?.color || '#64748b' }}
-                >
-                  {profile.full_name.split(' ').map(w => w[0]).join('').substring(0, 2)}
-                </div>
-                <div className="text-left">
-                  <p className="text-[12.5px] font-bold text-ink leading-tight">{profile.full_name}</p>
-                  <p className="text-[10.5px] font-semibold text-muted capitalize leading-none mt-0.5">{profile.role}</p>
-                </div>
-              </div>
-            )}
-          </div>
-        </header>
-
         {/* Page content */}
         <div className="p-6 lg:p-8 max-w-[1200px] mx-auto space-y-6">
+          {/* Topbar */}
+          <header className="sticky top-4 z-30 hidden lg:flex items-center justify-between bg-white/90 backdrop-blur-xl border border-line rounded-[20px] px-6 py-3.5 shadow-sm">
+            {/* Left: Pathname & Session */}
+            <div className="flex items-center gap-3">
+              <span className="font-extrabold text-[16px] text-ink capitalize tracking-tight">
+                {pathname === '/' || pathname === '/dashboard' ? 'Dashboard' : pathname.replace('/', '').replaceAll('-', ' ')}
+              </span>
+              <div className="h-4 w-px bg-line" />
+              <span className="text-[11px] font-bold text-primary bg-primary/10 px-2.5 py-1 rounded-full">
+                Spring 2026
+              </span>
+              {profile && (
+                <>
+                  <div className="h-4 w-px bg-line" />
+                  <span
+                    className="text-[10.5px] font-extrabold px-2.5 py-1 rounded-full"
+                    style={{ color: roleConfig?.color, background: roleConfig?.bg }}
+                  >
+                    {roleConfig?.label}
+                  </span>
+                </>
+              )}
+            </div>
+
+            {/* Right: DB status, Ingestion status, Profile */}
+            <div className="flex items-center gap-4">
+              {latestIngestion && (latestIngestion.status === 'queued' || latestIngestion.status === 'parsing' || latestIngestion.status === 'integrating') && (
+                <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-800 px-3 py-1 rounded-[12px] text-[12px] font-semibold animate-pulse">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                  Ingesting Timetable...
+                </div>
+              )}
+              {latestIngestion && latestIngestion.status === 'done' && (
+                <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 text-emerald-800 px-3 py-1 rounded-[12px] text-[12px] font-semibold">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                  Timetable Synced
+                </div>
+              )}
+
+              <div className="flex items-center gap-2 px-1">
+                <span className={`w-2 h-2 rounded-full ${dbStatus === 'online' ? '' : ''}`} />
+                <span className="text-[11.5px] font-semibold text-muted">
+                  {dbStatus === 'online' ? '' : ''}
+                </span>
+              </div>
+
+              {profile && (
+                <div className="flex items-center gap-2.5 pl-3 border-l border-line">
+                  <div
+                    className="w-8 h-8 rounded-[10px] flex items-center justify-center text-white text-[12px] font-bold flex-shrink-0"
+                    style={{ background: roleConfig?.color || '#64748b' }}
+                  >
+                    {profile.full_name.split(' ').map(w => w[0]).join('').substring(0, 2)}
+                  </div>
+                  <div className="text-left">
+                    <p className="text-[12.5px] font-bold text-ink leading-tight">{profile.full_name}</p>
+                    <p className="text-[10.5px] font-semibold text-muted capitalize leading-none mt-0.5">{profile.role}</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </header>
+
           {children}
         </div>
       </main>
