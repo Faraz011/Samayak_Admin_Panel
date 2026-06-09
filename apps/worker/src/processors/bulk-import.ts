@@ -33,16 +33,18 @@ export async function processBulkImport(data: BulkImportJobData) {
   try {
     await supabase.from('bulk_imports').update({ status: 'processing' }).eq('id', importId);
 
-    // Download file
-    const { data: fileData, error: downloadError } = await supabase.storage
-      .from('uploads')
-      .download(file_path);
+    // Retrieve CSV/Excel content from database row
+    const { data: contentData, error: contentError } = await supabase
+      .from('bulk_imports')
+      .select('file_content')
+      .eq('id', importId)
+      .single();
 
-    if (downloadError || !fileData) {
-      throw new Error(`Failed to download file: ${downloadError?.message}`);
+    if (contentError || !contentData || !contentData.file_content) {
+      throw new Error(`Failed to retrieve file content from database: ${contentError?.message || 'No content'}`);
     }
 
-    const buffer = Buffer.from(await fileData.arrayBuffer());
+    const buffer = Buffer.from(contentData.file_content, 'base64');
 
     // Parse file (CSV or Excel)
     let rows: Record<string, any>[];

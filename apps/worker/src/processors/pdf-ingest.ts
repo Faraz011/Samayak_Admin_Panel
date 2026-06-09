@@ -43,16 +43,18 @@ export async function processPdfIngest(data: PdfIngestJobData) {
       started_at: new Date().toISOString(),
     }).eq('id', ingestionId);
 
-    // Step 2: Download PDF from Supabase Storage
-    const { data: fileData, error: downloadError } = await supabase.storage
-      .from('uploads')
-      .download(file_path);
+    // Step 2: Retrieve PDF content from database row
+    const { data: contentData, error: contentError } = await supabase
+      .from('pdf_ingestions')
+      .select('file_content')
+      .eq('id', ingestionId)
+      .single();
 
-    if (downloadError || !fileData) {
-      throw new Error(`Failed to download PDF: ${downloadError?.message || 'No data'}`);
+    if (contentError || !contentData || !contentData.file_content) {
+      throw new Error(`Failed to retrieve PDF content from database: ${contentError?.message || 'No content'}`);
     }
 
-    const buffer = Buffer.from(await fileData.arrayBuffer());
+    const buffer = Buffer.from(contentData.file_content, 'base64');
 
     // Step 3: Parse PDF
     const { rows, errors: parseErrors } = await parseTimetablePdf(buffer);

@@ -284,9 +284,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               )}
 
               <div className="flex items-center gap-2 px-1">
-                <span className={`w-2 h-2 rounded-full ${dbStatus === 'online' ? 'bg-emerald-500' : 'bg-rose-500 animate-pulse'}`} />
+                <span className={`w-2 h-2 rounded-full ${dbStatus === 'online' ? '' : ''}`} />
                 <span className="text-[11.5px] font-semibold text-muted">
-                  {dbStatus === 'online' ? 'Live connected' : 'Connection offline'}
+                  {dbStatus === 'online' ? '' : ''}
                 </span>
               </div>
 

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createServiceRoleClient } from '@/lib/supabase/server';
 import pino from 'pino';
 import { recordAuditLog } from '@/lib/audit';
 
@@ -28,84 +28,54 @@ export async function POST(request: NextRequest) {
       correlationId,
     });
 
-    // Try to add job to BullMQ queue
-    try {
-      const { Queue } = await import('bullmq');
-      const queue = new Queue('pdf-ingest', {
-        connection: {
-          host: process.env.REDIS_URL?.replace('redis://', '').split(':')[0] || 'localhost',
-          port: parseInt(process.env.REDIS_URL?.split(':')[2] || '6379'),
-        },
-      });
+    const supabase = createServiceRoleClient();
 
-      await queue.add('process-pdf', {
-        file_path,
-        department_id,
-        correlation_id: correlationId,
-      }, {
-        attempts: 3,
-        backoff: { type: 'exponential', delay: 2000 },
-      });
+    // Find the ingestion record created by the frontend
+    const { data: ingestion, error: fetchError } = await supabase
+      .from('pdf_ingestions')
+      .select('id')
+      .eq('file_path', file_path)
+      .single();
 
-      await queue.close();
-      logger.info({ file_path }, 'PDF ingestion job queued successfully in BullMQ');
-    } catch (redisError: any) {
-      // Redis/BullMQ not available — simulate processing directly
-      logger.warn({ error: redisError.message }, 'BullMQ not available, running direct DB processing...');
-
-      const supabase = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!
-      );
-
-      // Find the ingestion record
-      const { data: ingestion } = await supabase
-        .from('pdf_ingestions')
-        .select('id')
-        .eq('file_path', file_path)
-        .single();
-
-      if (ingestion) {
-        // Run direct process (simulation or trigger worker logic)
-        // For local development when Redis/BullMQ might fail, let's trigger the real worker process in a detached/async way!
-        // This ensures the pipeline is not just simulated, but actually processes the file if we can.
-        // We import the processor directly here as fallback
-        try {
-          const { processPdfIngest } = await import('@/../../apps/worker/src/processors/pdf-ingest');
-          // run in background
-          processPdfIngest({ file_path, department_id, correlation_id: correlationId }).catch((err) => {
-            logger.error({ error: err.message, file_path }, 'Direct PDF ingestion processing failed');
-          });
-        } catch (importErr) {
-          logger.warn('Could not load worker process directly, falling back to simulated status updates');
-          
-          await supabase.from('pdf_ingestions').update({
-            status: 'parsing',
-            started_at: new Date().toISOString(),
-          }).eq('id', ingestion.id);
-
-          setTimeout(async () => {
-            await supabase.from('pdf_ingestions').update({
-              status: 'done',
-              rows_total: 25,
-              rows_created: 20,
-              rows_matched: 22,
-              rows_failed: 3,
-              finished_at: new Date().toISOString(),
-              error_log: [
-                { row: 5, message: 'Faculty name not found: Dr. Unknown' },
-                { row: 12, message: 'Room Lab-99 does not exist' },
-                { row: 18, message: 'Duplicate entry for Mon P3' },
-              ],
-            }).eq('id', ingestion.id);
-          }, 3000);
-        }
-      }
+    if (fetchError || !ingestion) {
+      logger.error({ file_path, error: fetchError?.message }, 'Ingestion record not found');
+      return NextResponse.json({ error: 'Associated ingestion record not found' }, { status: 404 });
     }
 
-    return NextResponse.json({ success: true, message: 'PDF ingestion job queued', correlationId });
+    // Call the dedicated inline processing route synchronously to ensure it completes under serverless envs
+    logger.info({ ingestion_id: ingestion.id }, 'Triggering inline PDF processing...');
+    const processUrl = new URL('/api/pdf-ingestions/process', request.url);
+    
+    // We call the process API route
+    const processResponse = await fetch(processUrl.toString(), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-correlation-id': correlationId,
+      },
+      body: JSON.stringify({ ingestion_id: ingestion.id }),
+    });
+
+    if (!processResponse.ok) {
+      const errorText = await processResponse.text();
+      logger.error({ status: processResponse.status, errorText }, 'Inline processing endpoint returned error');
+      return NextResponse.json(
+        { error: `Processing failed: ${errorText}` },
+        { status: processResponse.status }
+      );
+    }
+
+    const processResult = await processResponse.json();
+    logger.info({ ingestion_id: ingestion.id, processResult }, 'PDF ingestion processing finished');
+
+    return NextResponse.json({
+      success: true,
+      message: 'PDF ingestion completed inline',
+      correlationId,
+      result: processResult,
+    });
   } catch (error: any) {
-    logger.error({ error: error.message }, 'Failed to queue PDF ingestion job');
+    logger.error({ error: error.message }, 'Failed to process PDF ingestion');
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
@@ -115,10 +85,7 @@ export async function GET(request: NextRequest) {
   const logger = baseLogger.child({ correlationId });
 
   try {
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
+    const supabase = createServiceRoleClient();
 
     const { data, error } = await supabase
       .from('pdf_ingestions')

@@ -8,7 +8,7 @@ dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 const nextConfig = {
   transpilePackages: ['@samayak/shared', '@samayak/db'],
   experimental: {
-    serverComponentsExternalPackages: ['pino', 'bullmq', 'ioredis'],
+    serverComponentsExternalPackages: ['pino', 'bullmq', 'ioredis', 'tesseract.js', 'pdfjs-dist', 'pdf-to-png-converter'],
   },
   images: {
     domains: ['urgtpxnrutgeiyuxkawx.supabase.co'],

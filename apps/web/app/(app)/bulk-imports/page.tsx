@@ -107,27 +107,55 @@ export default function BulkImportsPage() {
       const { data: { user } } = await supabase.auth.getUser();
       const filePath = `bulk-imports/${Date.now()}_${file.name}`;
 
-      await supabase.storage.from('uploads').upload(filePath, file);
+      // Read file as base64 string
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const base64Data = (reader.result as string).split(',')[1];
 
-      await supabase.from('bulk_imports').insert({
-        file_path: filePath,
-        entity_type: entityType,
-        uploaded_by: user?.id,
-        status: 'queued',
-      });
+        // Create bulk import record with file_content
+        const { error: insertError } = await supabase.from('bulk_imports').insert({
+          file_path: filePath,
+          entity_type: entityType,
+          uploaded_by: user?.id,
+          status: 'queued',
+          file_content: base64Data, // Save base64 data directly
+        });
 
-      await fetch('/api/bulk-imports', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ file_path: filePath, entity_type: entityType }),
-      });
+        if (insertError) {
+          console.error('Failed to create import record:', insertError);
+          alert('Failed to save import record: ' + insertError.message);
+          setUploading(false);
+          return;
+        }
 
-      fetchData();
-    } catch (err) {
+        // Trigger BullMQ job via API
+        const response = await fetch('/api/bulk-imports', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ file_path: filePath, entity_type: entityType }),
+        });
+
+        if (!response.ok) {
+          const result = await response.json();
+          console.error('Queue error:', result.error);
+        }
+
+        fetchData();
+        setUploading(false);
+      };
+
+      reader.onerror = () => {
+        alert('Failed to read the file.');
+        setUploading(false);
+      };
+
+      reader.readAsDataURL(file);
+      return;
+    } catch (err: any) {
       console.error('Upload failed:', err);
+      alert('Upload failed: ' + err.message);
+      setUploading(false);
     }
-
-    setUploading(false);
   };
 
   const handleDrop = (e: React.DragEvent) => {

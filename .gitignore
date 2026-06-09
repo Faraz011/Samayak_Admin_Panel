@@ -39,3 +39,10 @@ pnpm-debug.log*
 
 # Testing
 coverage/
+
+# Temporary / Local OCR files
+*.traineddata
+debug-timetable.pdf
+debug-page-*.png
+*.tsbuildinfo
+
