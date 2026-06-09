@@ -1,3 +1,11 @@
+// Force Next.js Node File Trace (NFT) to bundle @napi-rs/canvas on Vercel.
+// Without this, the dynamic process.getBuiltinModule require inside pdfjs-dist is hidden
+// from static analysis, causing the native package to be omitted from Vercel's zip.
+if (process.env.NODE_ENV === 'production') {
+  // @ts-ignore
+  import('@napi-rs/canvas').catch(() => {});
+}
+
 // ============================================================
 // Polyfills for pdfjs-dist in Node.js serverless/Vercel environment
 // These MUST be set before any pdfjs-dist import happens.
