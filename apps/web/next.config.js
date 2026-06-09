@@ -18,6 +18,7 @@ const nextConfig = {
       'pdf-to-png-converter',
       'canvas',
       '@napi-rs/canvas',
+      '@napi-rs/canvas-linux-x64-gnu',
     ],
   },
   images: {

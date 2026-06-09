@@ -4,6 +4,8 @@
 if (process.env.NODE_ENV === 'production') {
   // @ts-ignore
   import('@napi-rs/canvas').catch(() => {});
+  // @ts-ignore
+  import('@napi-rs/canvas-linux-x64-gnu').catch(() => {});
 }
 
 // ============================================================
@@ -100,6 +102,32 @@ export interface ParseResult {
   rawText?: string; // for debug logging
 }
 
+async function extractTextWithPdfJs(buffer: Buffer): Promise<string> {
+  await _pdfjsWorkerReady;
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const loadingTask = pdfjs.getDocument({
+    data: new Uint8Array(buffer),
+    useWorkerFetch: false,
+    isEvalSupported: false,
+  });
+  
+  const doc = await loadingTask.promise;
+  let fullText = '';
+  
+  for (let i = 1; i <= doc.numPages; i++) {
+    const page = await doc.getPage(i);
+    const textContent = await page.getTextContent();
+    const pageText = textContent.items
+      .map((item: any) => item.str)
+      .join(' ');
+    fullText += `\n--- Page ${i} ---\n` + pageText;
+    page.cleanup();
+  }
+  
+  await doc.destroy();
+  return fullText;
+}
+
 /**
  * Parse a BIT Mesra format timetable PDF using Groq LLM or regex fallback.
  * Supports both text-based PDFs and scanned (image-based) PDFs via Tesseract.js OCR.
@@ -113,15 +141,30 @@ export async function parseTimetablePdf(base64Content: string): Promise<ParseRes
   let ocrUsed = false;
   const errors: Array<{ line: number; message: string }> = [];
 
+  // Try extracting text via pdfjs-dist's native text layer first (more reliable than pdf-parse)
   try {
-    const result = await pdfParse(buffer);
-    parsedText = result.text || '';
-  } catch (pdfErr: any) {
-    console.warn('⚠️ pdf-parse failed:', pdfErr.message);
-    errors.push({ line: 0, message: `pdf-parse failed: ${pdfErr.message}` });
+    console.log('Attempting text extraction with pdfjs-dist...');
+    parsedText = await extractTextWithPdfJs(buffer);
+    console.log(`pdfjs-dist extracted ${parsedText.trim().length} characters`);
+  } catch (pdfjsErr: any) {
+    console.warn('⚠️ pdfjs-dist text extraction failed:', pdfjsErr.message);
+    errors.push({ line: 0, message: `pdfjs-dist text extraction failed: ${pdfjsErr.message}` });
   }
 
-  // If pdf-parse returned too little text, try OCR
+  // Fallback to pdf-parse if pdfjs-dist failed or returned insufficient text
+  if (!parsedText || parsedText.trim().length < 50) {
+    try {
+      console.log('Attempting fallback text extraction with pdf-parse...');
+      const result = await pdfParse(buffer);
+      parsedText = result.text || '';
+      console.log(`pdf-parse extracted ${parsedText.trim().length} characters`);
+    } catch (pdfErr: any) {
+      console.warn('⚠️ pdf-parse failed:', pdfErr.message);
+      errors.push({ line: 0, message: `pdf-parse failed: ${pdfErr.message}` });
+    }
+  }
+
+  // Fallback to OCR if both failed or returned insufficient text
   if (!parsedText || parsedText.trim().length < 50) {
     console.log('ℹ️ PDF contains insufficient readable text. Attempting Tesseract.js OCR...');
     try {
