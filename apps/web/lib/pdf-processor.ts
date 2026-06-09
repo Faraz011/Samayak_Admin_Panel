@@ -1,6 +1,9 @@
 // Force Next.js Node File Trace (NFT) to bundle @napi-rs/canvas on Vercel.
 // We use __non_webpack_require__ to bypass Webpack's bundling/parsing of native binaries,
 // ensuring the Next.js compiler compiles successfully while still tracing the dependency.
+// Force Next.js Node File Trace (NFT) to bundle @napi-rs/canvas on Vercel.
+// We use __non_webpack_require__ to bypass Webpack's bundling/parsing of native binaries,
+// ensuring the Next.js compiler compiles successfully.
 if (process.env.NODE_ENV === 'production') {
   try {
     const req = typeof (globalThis as any).__non_webpack_require__ !== 'undefined' 

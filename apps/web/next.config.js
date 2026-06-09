@@ -20,6 +20,13 @@ const nextConfig = {
       '@napi-rs/canvas',
       '@napi-rs/canvas-linux-x64-gnu',
     ],
+    outputFileTracingRoot: path.join(__dirname, '../../'),
+    outputFileTracingIncludes: {
+      '/api/pdf-ingestions/process': [
+        'node_modules/@napi-rs/canvas/**/*',
+        'node_modules/@napi-rs/canvas-linux-x64-gnu/**/*',
+      ],
+    },
   },
   images: {
     domains: ['urgtpxnrutgeiyuxkawx.supabase.co'],
