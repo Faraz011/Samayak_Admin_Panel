@@ -128,6 +128,7 @@ async function runTesseractOCR(pdfBuffer: Buffer): Promise<string> {
       let workerPath = '';
       const pathsToTry = [
         path.join(process.cwd(), 'node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs'),
+        path.join(process.cwd(), 'node_modules/.pnpm/pdfjs-dist@6.0.227/node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs'),
         path.join(process.cwd(), '../../node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs'),
         path.join(process.cwd(), '../node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs'),
       ];

@@ -245,7 +245,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         {/* Page content */}
         <div className="p-6 lg:p-8 max-w-[1200px] mx-auto space-y-6">
           {/* Topbar */}
-          <header className="hidden lg:flex items-center justify-between bg-white/80 backdrop-blur-md border border-line rounded-[20px] px-6 py-3.5 shadow-sm">
+          <header className="sticky top-4 z-30 hidden lg:flex items-center justify-between bg-white/90 backdrop-blur-xl border border-line rounded-[20px] px-6 py-3.5 shadow-sm">
             {/* Left: Pathname & Session */}
             <div className="flex items-center gap-3">
               <span className="font-extrabold text-[16px] text-ink capitalize tracking-tight">

@@ -44,11 +44,10 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center p-6">
       <div className="w-full max-w-[480px] animate-fade-in">
-        {/* Brand Header */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center gap-3 mb-4">
-            <div className="w-12 h-12 rounded-[14px] bg-gradient-brand flex items-center justify-center shadow-lg">
-              <GraduationCap className="w-7 h-7 text-white" />
+            <div className="w-12 h-12 rounded-[14px] bg-black flex items-center justify-center shadow-lg overflow-hidden flex-shrink-0">
+              <img src="/anugat_logo.png" alt="Anugat AI" className="w-full h-full object-contain p-1" />
             </div>
             <h1 className="text-[28px] font-extrabold tracking-tight text-ink">
               Samayak

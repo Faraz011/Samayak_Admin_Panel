@@ -21,6 +21,7 @@ const nextConfig = {
   outputFileTracingIncludes: {
     '/api/**/*': [
       'node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs',
+      'node_modules/.pnpm/pdfjs-dist@6.0.227/node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs',
       'node_modules/tesseract.js/src/**/*',
       'node_modules/tesseract.js-core/**/*',
     ],
