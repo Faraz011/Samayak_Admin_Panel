@@ -1,11 +1,16 @@
 // Force Next.js Node File Trace (NFT) to bundle @napi-rs/canvas on Vercel.
-// Without this, the dynamic process.getBuiltinModule require inside pdfjs-dist is hidden
-// from static analysis, causing the native package to be omitted from Vercel's zip.
+// We use __non_webpack_require__ to bypass Webpack's bundling/parsing of native binaries,
+// ensuring the Next.js compiler compiles successfully while still tracing the dependency.
 if (process.env.NODE_ENV === 'production') {
-  // @ts-ignore
-  import('@napi-rs/canvas').catch(() => {});
-  // @ts-ignore
-  import('@napi-rs/canvas-linux-x64-gnu').catch(() => {});
+  try {
+    const req = typeof (globalThis as any).__non_webpack_require__ !== 'undefined' 
+      ? (globalThis as any).__non_webpack_require__ 
+      : require;
+    req('@napi-rs/canvas');
+    req('@napi-rs/canvas-linux-x64-gnu');
+  } catch (e) {
+    // Ignore runtime failures
+  }
 }
 
 // ============================================================
