@@ -1,21 +1,76 @@
-// Polyfill DOMMatrix for pdfjs-dist in Node.js serverless/Vercel environment
-if (typeof (global as any).DOMMatrix === 'undefined') {
-  (global as any).DOMMatrix = class DOMMatrix {
+// ============================================================
+// Polyfills for pdfjs-dist in Node.js serverless/Vercel environment
+// These MUST be set before any pdfjs-dist import happens.
+// ============================================================
+
+// Polyfill DOMMatrix
+if (typeof (globalThis as any).DOMMatrix === 'undefined') {
+  (globalThis as any).DOMMatrix = class DOMMatrix {
     a = 1; b = 0; c = 0; d = 1; e = 0; f = 0;
+    m11 = 1; m12 = 0; m13 = 0; m14 = 0;
+    m21 = 0; m22 = 1; m23 = 0; m24 = 0;
+    m31 = 0; m32 = 0; m33 = 1; m34 = 0;
+    m41 = 0; m42 = 0; m43 = 0; m44 = 1;
+    is2D = true; isIdentity = true;
     constructor(matrix?: any) {
       if (Array.isArray(matrix)) {
-        this.a = matrix[0] ?? 1;
-        this.b = matrix[1] ?? 0;
-        this.c = matrix[2] ?? 0;
-        this.d = matrix[3] ?? 1;
-        this.e = matrix[4] ?? 0;
-        this.f = matrix[5] ?? 0;
+        this.a = this.m11 = matrix[0] ?? 1;
+        this.b = this.m12 = matrix[1] ?? 0;
+        this.c = this.m21 = matrix[2] ?? 0;
+        this.d = this.m22 = matrix[3] ?? 1;
+        this.e = this.m41 = matrix[4] ?? 0;
+        this.f = this.m42 = matrix[5] ?? 0;
       }
     }
-    translate(tx: number, ty: number) { return this; }
-    scale(sx: number, sy: number) { return this; }
+    translate() { return new (globalThis as any).DOMMatrix(); }
+    scale() { return new (globalThis as any).DOMMatrix(); }
+    multiply() { return new (globalThis as any).DOMMatrix(); }
+    inverse() { return new (globalThis as any).DOMMatrix(); }
+    transformPoint(p: any) { return { x: p?.x ?? 0, y: p?.y ?? 0, z: 0, w: 1 }; }
   };
 }
+
+// Polyfill Path2D (required by pdfjs canvas renderer)
+if (typeof (globalThis as any).Path2D === 'undefined') {
+  (globalThis as any).Path2D = class Path2D {
+    constructor(_path?: any) {}
+    addPath() {}
+    moveTo() {}
+    lineTo() {}
+    bezierCurveTo() {}
+    quadraticCurveTo() {}
+    arc() {}
+    arcTo() {}
+    closePath() {}
+    rect() {}
+    ellipse() {}
+  };
+}
+
+// ============================================================
+// Pre-load pdfjs worker onto globalThis to prevent Vercel errors.
+//
+// pdfjs-dist v6 checks `globalThis.pdfjsWorker?.WorkerMessageHandler`
+// before attempting to dynamically import `./pdf.worker.mjs`.
+// In Vercel serverless, that dynamic import fails because the
+// bundler doesn't trace the worker file. By pre-loading it here,
+// we bypass the dynamic import entirely.
+// ============================================================
+async function preloadPdfjsWorker(): Promise<void> {
+  if ((globalThis as any).pdfjsWorker) return; // already loaded
+  try {
+    const workerModule = await import('pdfjs-dist/legacy/build/pdf.worker.mjs');
+    (globalThis as any).pdfjsWorker = workerModule;
+    console.log('✅ Pre-loaded pdfjs worker onto globalThis.pdfjsWorker');
+  } catch (err: any) {
+    console.warn('⚠️ Failed to pre-load pdfjs worker:', err.message);
+    // Fallback: if the worker can't be imported, pdf-to-png-converter
+    // will fail gracefully and we'll return an informative error.
+  }
+}
+
+// Fire-and-forget the preload (it's cached after first call)
+const _pdfjsWorkerReady = preloadPdfjsWorker();
 
 // @ts-ignore
 import pdfParse from 'pdf-parse';
@@ -118,38 +173,8 @@ export async function parseTimetablePdf(base64Content: string): Promise<ParseRes
 async function runTesseractOCR(pdfBuffer: Buffer): Promise<string> {
   console.log('Converting PDF pages to PNG images for OCR...');
   try {
-    // Set up pdfjs workerSrc dynamically to prevent Windows file:// URL issues and next.js build chunk missing module errors
-    try {
-      const { pathToFileURL } = await import('url');
-      const path = await import('path');
-      const fs = await import('fs');
-      const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
-      
-      let workerPath = '';
-      const pathsToTry = [
-        path.join(process.cwd(), 'node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs'),
-        path.join(process.cwd(), 'node_modules/.pnpm/pdfjs-dist@6.0.227/node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs'),
-        path.join(process.cwd(), '../../node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs'),
-        path.join(process.cwd(), '../node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs'),
-      ];
-
-      for (const p of pathsToTry) {
-        const resolved = path.resolve(p);
-        if (fs.existsSync(resolved)) {
-          workerPath = resolved;
-          break;
-        }
-      }
-
-      if (workerPath) {
-        pdfjs.GlobalWorkerOptions.workerSrc = pathToFileURL(workerPath).href;
-        console.log('✅ Configured pdfjs workerSrc dynamically at:', pdfjs.GlobalWorkerOptions.workerSrc);
-      } else {
-        console.warn('⚠️ pdf.worker.mjs not found in any of the expected paths');
-      }
-    } catch (workerErr: any) {
-      console.warn('⚠️ Failed to set pdfjs workerSrc dynamically:', workerErr.message);
-    }
+    // Ensure pdfjs worker is pre-loaded before pdf-to-png-converter uses it
+    await _pdfjsWorkerReady;
 
     const { pdfToPng } = await import('pdf-to-png-converter');
     const pngPages = await pdfToPng(pdfBuffer, { viewportScale: 2.0 });
