@@ -1,3 +1,22 @@
+// Polyfill DOMMatrix for pdfjs-dist in Node.js serverless/Vercel environment
+if (typeof (global as any).DOMMatrix === 'undefined') {
+  (global as any).DOMMatrix = class DOMMatrix {
+    a = 1; b = 0; c = 0; d = 1; e = 0; f = 0;
+    constructor(matrix?: any) {
+      if (Array.isArray(matrix)) {
+        this.a = matrix[0] ?? 1;
+        this.b = matrix[1] ?? 0;
+        this.c = matrix[2] ?? 0;
+        this.d = matrix[3] ?? 1;
+        this.e = matrix[4] ?? 0;
+        this.f = matrix[5] ?? 0;
+      }
+    }
+    translate(tx: number, ty: number) { return this; }
+    scale(sx: number, sy: number) { return this; }
+  };
+}
+
 // @ts-ignore
 import pdfParse from 'pdf-parse';
 
