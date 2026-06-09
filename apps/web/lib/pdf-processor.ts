@@ -107,10 +107,7 @@ async function extractTextWithPdfJs(buffer: Buffer): Promise<string> {
   await _pdfjsWorkerReady;
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
   
-  // Disable rendering in Node.js environment - text extraction only
-  if (typeof window === 'undefined') {
-    pdfjs.GlobalWorkerOptions.useSystemFonts = false;
-  }
+
   
   const loadingTask = pdfjs.getDocument({
     data: new Uint8Array(buffer),
