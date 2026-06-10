@@ -28,8 +28,8 @@
     "ioredis": "^5.4.0",
     "lucide-react": "^0.460.0",
     "next": "14.2.18",
+    "@napi-rs/canvas": "~1.0.0",
     "pdf-parse": "^1.1.1",
-    "pdf-to-png-converter": "^4.1.0",
     "pdfjs-dist": "6.0.227",
     "pino": "^9.6.0",
     "react": "^18.3.0",
@@ -39,6 +39,8 @@
     "tailwind-merge": "^2.6.0",
     "tesseract.js": "^7.0.0",
     "tesseract.js-core": "7.0.0",
+    "pdf-to-png-converter": "^4.1.0",
+    "sharp": "^0.33.0",
     "xlsx": "^0.18.5",
     "zod": "^3.23.0"
   },
