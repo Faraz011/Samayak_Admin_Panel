@@ -263,6 +263,14 @@ This platform is optimized for modern cloud deployments. Follow these instructio
   - `PORT`: `3000` (Render will automatically bind to this)
 - Render will compile the Docker container and start the worker along with its built-in HTTP health check server.
 
+### 5. Render Free Tier Keep-Alive (Vercel Cron Job)
+Since Render's free tier Web Services go to sleep after 15 minutes of inactivity, we use a free **Vercel Cron Job** to automatically keep the worker awake.
+
+1. In your **Vercel Dashboard → Project Settings → Environment Variables**, add:
+   - `RENDER_WORKER_URL`: The public URL of your Render Web Service (e.g. `https://samayak-worker.onrender.com/`).
+   - `CRON_SECRET`: A secure token to protect the route (Vercel supplies this automatically to registered cron jobs).
+2. The repository includes `vercel.json` which tells Vercel to ping `/api/cron/keep-awake` every 10 minutes, keeping the Render worker active and ready to process incoming files.
+
 ---
 
 ## License
