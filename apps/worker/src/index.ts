@@ -7,11 +7,12 @@ import dotenv from 'dotenv';
 // Load root .env if it exists, then fallback/override with local app .env
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 dotenv.config();
-import { Worker } from 'bullmq';
+import { Worker, Queue } from 'bullmq';
 import IORedis from 'ioredis';
 import pino from 'pino';
 import { processPdfIngest } from './processors/pdf-ingest';
 import { processBulkImport } from './processors/bulk-import';
+import { processKeepAlive } from './processors/keep-alive';
 
 const logger = pino({ name: 'samayak-worker' });
 
@@ -77,11 +78,54 @@ bulkWorker.on('failed', (job, err) => {
   logger.error({ jobId: job?.id, correlationId: job?.data?.correlation_id, error: err.message }, 'Bulk import job failed');
 });
 
+// Keep-Alive Worker
+const keepAliveWorker = new Worker(
+  'keep-alive',
+  async (job) => {
+    const jobLogger = logger.child({ jobId: job.id });
+    jobLogger.info('Processing keep-alive check');
+    await processKeepAlive(job.data);
+    jobLogger.info('Keep-alive check completed');
+  },
+  {
+    connection: connection as any,
+    concurrency: 1,
+  }
+);
+
+keepAliveWorker.on('completed', (job) => {
+  logger.info({ jobId: job.id }, 'Keep-alive job completed');
+});
+
+keepAliveWorker.on('failed', (job, err) => {
+  logger.error({ jobId: job?.id, error: err.message }, 'Keep-alive job failed');
+});
+
 logger.info('🚀 Samayak Worker started. Listening for jobs…');
 
-// Add a dummy HTTP server for Render's free tier web service port binding check
+// Schedule the keep-alive cron job (every 10 minutes)
+const keepAliveQueue = new Queue('keep-alive', { connection: connection as any });
+
+(async () => {
+  try {
+    // Remove old repeating job if exists and create a new one
+    await keepAliveQueue.removeRepeatable('keep-alive-cron', { pattern: '*/10 * * * *' });
+    await keepAliveQueue.add(
+      'keep-alive-cron',
+      { timestamp: new Date().toISOString() },
+      {
+        repeat: {
+          pattern: '*/10 * * * *', // Every 10 minutes
+        },
+      }
+    );
+    logger.info('Keep-alive cron job scheduled (every 10 minutes)');
+  } catch (error) {
+    logger.error({ error }, 'Failed to schedule keep-alive cron job');
+  }
+})();
 import http from 'node:http';
-const port = process.env.PORT || 3000;
+const port = process.env.PORT || 3001;
 const healthServer = http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify({ status: 'ok', service: 'samayak-worker' }));
@@ -97,6 +141,8 @@ const shutdown = async () => {
   healthServer.close();
   await pdfWorker.close();
   await bulkWorker.close();
+  await keepAliveWorker.close();
+  await keepAliveQueue.close();
   await connection.quit();
   process.exit(0);
 };
