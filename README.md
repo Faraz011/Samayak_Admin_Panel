@@ -92,7 +92,7 @@ The platform features a highly advanced, self-healing **PDF Timetable Ingestion 
 
 - Node.js ≥ 20
 - pnpm ≥ 9
-- Docker (for Redis, or provide `REDIS_URL`)
+- Docker (to run local Redis queue broker)
 
 ### 1. Clone & Install
 
@@ -104,43 +104,48 @@ pnpm install
 
 ### 2. Environment Variables
 
+Create a single `.env` file in the **root of the repository** (both Next.js and the worker will load it automatically):
+
 ```bash
-cp .env.example apps/web/.env.local
-cp .env.example apps/worker/.env
-# Edit with your Supabase credentials and GROQ_API_KEY
+cp .env.example .env
+# Edit the root .env with your Supabase credentials and GROQ_API_KEY
 ```
 
 ### 3. Database Setup
 
-Run the migration SQL in your Supabase SQL Editor:
-```bash
-# Copy contents of supabase/migrations/001_initial.sql
-# Paste and run in Supabase Dashboard → SQL Editor
-```
+1. Copy the SQL schema from [001_initial.sql](file:///c:/Users/Faraz/Samayak_Admin_Panel/supabase/migrations/001_initial.sql) and paste/run it in your **Supabase Dashboard → SQL Editor**.
+2. Copy the seed data from [seed.sql](file:///c:/Users/Faraz/Samayak_Admin_Panel/supabase/seed.sql) and paste/run it in your **Supabase SQL Editor**.
+3. Create a **Public** Storage bucket named `pdf-ingestions` in your Supabase project.
+4. Run the seed script to create demo authentication users in Supabase:
+   ```bash
+   pnpm --filter @samayak/web seed
+   ```
 
-Then run the seed:
-```bash
-# Copy contents of supabase/seed.sql
-# Paste and run in Supabase Dashboard → SQL Editor
+### 4. Run Development Server
 
-# Then create auth users:
-pnpm --filter @samayak/web seed
-```
-
-### 4. Run Development
+The absolute best way to run the project locally is by starting both the web application and the worker together using **Turborepo** in a single terminal:
 
 ```bash
-# Start Redis (if using Docker)
+# A. Start a local Redis instance
 docker run -d --name redis -p 6379:6379 redis:7-alpine
 
-# Start web app
+# B. Run both frontend and worker concurrently
+pnpm dev
+```
+*This will stream and color-code logs from both the Next.js app and the worker in your active terminal.*
+
+*(Optional) If you want to run them in separate terminals, you can use:*
+```bash
+# Terminal 1: Next.js Frontend
 pnpm dev:web
 
-# Start worker (in another terminal)
+# Terminal 2: Queue Worker
 pnpm dev:worker
 ```
 
-### 5. Docker Compose (One Command)
+### 5. Run Everything via Docker Compose (Alternative)
+
+To build and run the entire stack (web app, background worker, and Redis) inside Docker:
 
 ```bash
 docker-compose up --build
