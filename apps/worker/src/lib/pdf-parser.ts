@@ -135,9 +135,9 @@ export interface ParseResult {
 
 /**
  * Run Tesseract.js OCR on a PDF buffer for scanned PDFs.
- * Converts PDF pages to PNG images and runs OCR on each.
+ * Converts PDF pages to PNG images and runs OCR on each page individually.
  */
-async function runTesseractOCR(pdfBuffer: Buffer): Promise<string> {
+async function runTesseractOCRPages(pdfBuffer: Buffer): Promise<string[]> {
   console.log("Converting PDF pages to PNG images for OCR...");
   try {
     // Ensure pdfjs worker is pre-loaded
@@ -164,14 +164,14 @@ async function runTesseractOCR(pdfBuffer: Buffer): Promise<string> {
       const TesseractModule = await import("tesseract.js");
       const Tesseract = (TesseractModule as any).default || TesseractModule;
 
-      let fullText = "";
+      const pagesText: string[] = [];
       for (let i = 0; i < pngPages.length; i++) {
         console.log(`Running OCR on page ${i + 1}/${pngPages.length}...`);
         const { data } = await Tesseract.recognize(pngPages[i].content, "eng");
-        fullText += `\n--- Page ${i + 1} ---\n${data.text || ""}`;
+        pagesText.push(data.text || "");
       }
 
-      return fullText;
+      return pagesText;
     } finally {
       console.warn = originalWarn;
     }
@@ -182,7 +182,7 @@ async function runTesseractOCR(pdfBuffer: Buffer): Promise<string> {
   }
 }
 
-async function extractTextWithPdfJs(buffer: Buffer): Promise<string> {
+async function extractTextPagesWithPdfJs(buffer: Buffer): Promise<string[]> {
   await _pdfjsWorkerReady;
   // @ts-ignore
   const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
@@ -195,36 +195,35 @@ async function extractTextWithPdfJs(buffer: Buffer): Promise<string> {
   });
 
   const doc = await loadingTask.promise;
-  let fullText = "";
+  const pagesText: string[] = [];
 
   for (let i = 1; i <= doc.numPages; i++) {
     const page = await doc.getPage(i);
     const textContent = await page.getTextContent();
     const pageText = textContent.items.map((item: any) => item.str).join(" ");
-    fullText += `\n--- Page ${i} ---\n` + pageText;
+    pagesText.push(pageText);
     page.cleanup();
   }
 
   doc.cleanup();
-  return fullText;
+  return pagesText;
 }
 
 /**
- * Parse a BIT Mesra format timetable PDF using Groq LLM or regex fallback.
- * Uses text extraction only - supports both text-based and scanned PDFs.
+ * Parse a BIT Mesra format timetable PDF page-by-page using Groq LLM or regex fallback.
+ * Automatically splits multi-page PDFs to parse each page individually.
  */
 export async function parseTimetablePdf(
   buffer: Buffer,
 ): Promise<ParseResult> {
-  // --- Step 1: Extract text ---
-  let parsedText = "";
   const errors: Array<{ line: number; message: string }> = [];
+  let pagesText: string[] = [];
 
-  // Try extracting text via pdfjs-dist's native text layer first
+  // --- Step 1: Try Native PDF Text Extraction ---
   try {
     console.log("Attempting text extraction with pdfjs-dist...");
-    parsedText = await extractTextWithPdfJs(buffer);
-    console.log(`pdfjs-dist extracted ${parsedText.trim().length} characters`);
+    pagesText = await extractTextPagesWithPdfJs(buffer);
+    console.log(`pdfjs-dist extracted ${pagesText.length} pages of text`);
   } catch (pdfjsErr: any) {
     console.warn("⚠️ pdfjs-dist text extraction failed:", pdfjsErr.message);
     errors.push({
@@ -233,47 +232,41 @@ export async function parseTimetablePdf(
     });
   }
 
-  // Fallback to pdf-parse if pdfjs-dist failed or returned insufficient text
-  if (!parsedText || parsedText.trim().length < 50) {
+  // --- Step 2: Fallback to pdf-parse if we got no text or empty pages ---
+  const totalLength = pagesText.reduce((acc, p) => acc + p.trim().length, 0);
+  if (totalLength < 50) {
     try {
       console.log("Attempting fallback text extraction with pdf-parse...");
       const result = await pdfParse(buffer);
-      parsedText = result.text || "";
+      const parsedText = result.text || "";
       console.log(`pdf-parse extracted ${parsedText.trim().length} characters`);
+      pagesText = parsedText.split(/\f/).map(p => p.trim()).filter(Boolean);
     } catch (pdfErr: any) {
       console.warn("⚠️ pdf-parse failed:", pdfErr.message);
       errors.push({ line: 0, message: `pdf-parse failed: ${pdfErr.message}` });
     }
   }
 
-  // Fallback to OCR for scanned PDFs if text extraction failed
-  if (!parsedText || parsedText.trim().length < 30) {
+  // --- Step 3: Fallback to Tesseract OCR if text length is still too low ---
+  const checkLength = pagesText.reduce((acc, p) => acc + p.trim().length, 0);
+  if (checkLength < 30) {
     console.log(
       "ℹ️ PDF contains insufficient readable text. Attempting Tesseract.js OCR for scanned PDF...",
     );
     try {
-      parsedText = await runTesseractOCR(buffer);
-      if (parsedText.trim().length > 50) {
-        console.log(
-          `✅ Tesseract.js OCR extracted ${parsedText.length} characters`,
-        );
-      }
+      pagesText = await runTesseractOCRPages(buffer);
+      console.log(`✅ Tesseract.js OCR completed for ${pagesText.length} pages`);
     } catch (ocrErr: any) {
       console.error("⚠️ Tesseract.js OCR failed:", ocrErr.message);
       errors.push({
         line: 0,
         message: `Tesseract.js OCR failed: ${ocrErr.message}`,
       });
-      if (ocrErr.stack) {
-        errors.push({
-          line: 0,
-          message: `OCR Stack: ${ocrErr.stack.substring(0, 500)}`,
-        });
-      }
     }
   }
 
-  if (!parsedText || parsedText.trim().length < 30) {
+  // If we still have no pages, return failure
+  if (pagesText.length === 0 || pagesText.reduce((acc, p) => acc + p.trim().length, 0) < 30) {
     return {
       rows: [],
       errors: [
@@ -281,146 +274,137 @@ export async function parseTimetablePdf(
         {
           line: 0,
           message:
-            "PDF contains no readable text. Both text extraction and OCR failed - ensure PDF is valid or use OCR preprocessing tools.",
+            "PDF contains no readable text. Both text extraction and OCR failed.",
         },
       ],
       method: "regex-fallback",
-      rawText: parsedText || "(empty)",
+      rawText: "(empty)",
     };
   }
 
-  const rawTextPreview = parsedText.substring(0, 2000);
+  // --- Step 4: Parse each page individually and merge results ---
+  const allRows: ParsedTimetableRow[] = [];
+  let method: "groq-llm" | "regex-fallback" = "regex-fallback";
+  const apiKey = process.env.GROQ_API_KEY || process.env.NEXT_PUBLIC_GROQ_API_KEY;
 
-  // --- Step 2: LLM Parsing ---
-  const apiKey =
-    process.env.GROQ_API_KEY || process.env.NEXT_PUBLIC_GROQ_API_KEY;
-  if (apiKey) {
-    try {
-      const llmResult = await parseWithGroqTwoPass(parsedText, apiKey);
-      if (llmResult.rows.length > 0) {
-        return { ...llmResult, rawText: rawTextPreview };
-      }
-      console.warn("⚠️ Groq returned 0 rows, falling back to regex parser");
-    } catch (err: any) {
-      console.warn(
-        "⚠️ Groq LLM parsing failed, falling back to regex:",
-        err.message,
-      );
+  console.log(`Processing ${pagesText.length} pages individually...`);
+
+  for (let i = 0; i < pagesText.length; i++) {
+    const pageText = pagesText[i];
+    if (pageText.trim().length < 30) {
+      console.log(`Skipping empty page ${i + 1}`);
+      continue;
     }
-  } else {
-    console.log("ℹ️ GROQ_API_KEY not set. Using regex parser.");
+
+    console.log(`Parsing Page ${i + 1}/${pagesText.length}...`);
+
+    if (apiKey) {
+      try {
+        const pageResult = await parsePageWithGroqTwoPass(pageText, i + 1, apiKey);
+        if (pageResult.rows.length > 0) {
+          allRows.push(...pageResult.rows);
+          method = "groq-llm";
+        }
+        if (pageResult.errors.length > 0) {
+          errors.push(...pageResult.errors);
+        }
+      } catch (err: any) {
+        console.warn(`⚠️ Groq parsing failed for Page ${i + 1}, falling back to regex:`, err.message);
+        const regexResult = parseWithRegex(pageText, i + 1);
+        allRows.push(...regexResult.rows);
+        errors.push(...regexResult.errors);
+      }
+    } else {
+      console.log(`ℹ️ GROQ_API_KEY not set. Using regex parser for Page ${i + 1}.`);
+      const regexResult = parseWithRegex(pageText, i + 1);
+      allRows.push(...regexResult.rows);
+      errors.push(...regexResult.errors);
+    }
+
+    // Rate limit buffer between pages to avoid hitting TPM limits
+    if (i < pagesText.length - 1 && apiKey) {
+      await new Promise((r) => setTimeout(r, 1500));
+    }
   }
 
-  // --- Step 3: Regex fallback ---
-  const regexResult = parseWithRegex(parsedText);
-  return { ...regexResult, method: "regex-fallback", rawText: rawTextPreview };
+  return {
+    rows: allRows,
+    errors,
+    method,
+    rawText: pagesText.join("\n\n--- Page Break ---\n\n").substring(0, 4000),
+  };
 }
 
 /**
- * Two-pass Groq LLM extraction strategy for maximum accuracy.
+ * Two-pass Groq LLM extraction for an individual timetable page.
  */
-async function parseWithGroqTwoPass(
-  text: string,
+async function parsePageWithGroqTwoPass(
+  pageText: string,
+  pageNum: number,
   apiKey: string,
-): Promise<ParseResult> {
-  console.log("🤖 Starting two-pass Groq LLM extraction...");
+): Promise<{ rows: ParsedTimetableRow[]; errors: Array<{ line: number; message: string }> }> {
+  console.log(`🤖 Starting Groq LLM extraction for Page ${pageNum}...`);
 
-  // Chunk very long text to stay within token limits
-  const maxChars = 14000;
-  const textChunks: string[] = [];
-  if (text.length <= maxChars) {
-    textChunks.push(text);
-  } else {
-    const pages = text.split(/\f|\n{3,}/);
-    let current = "";
-    for (const page of pages) {
-      if ((current + page).length > maxChars && current.length > 0) {
-        textChunks.push(current);
-        current = page;
-      } else {
-        current += "\n" + page;
-      }
-    }
-    if (current.trim()) textChunks.push(current);
-  }
+  const response = await callGroqAPI(apiKey, [
+    {
+      role: "system",
+      content: TIMETABLE_EXTRACTION_PROMPT,
+    },
+    {
+      role: "user",
+      content: `Parse this timetable page. Extract EVERY class/lab slot.\n\n${pageText}`,
+    },
+  ]);
 
-  const allRows: ParsedTimetableRow[] = [];
-  const allErrors: Array<{ line: number; message: string }> = [];
+  const rows: ParsedTimetableRow[] = [];
+  const errors: Array<{ line: number; message: string }> = [];
 
-  for (let chunkIdx = 0; chunkIdx < textChunks.length; chunkIdx++) {
-    const chunk = textChunks[chunkIdx];
-
-    const response = await callGroqAPI(apiKey, [
-      {
-        role: "system",
-        content: TIMETABLE_EXTRACTION_PROMPT,
-      },
-      {
-        role: "user",
-        content: `Parse this timetable text completely. Extract EVERY class/lab slot.\n\n${chunk}`,
-      },
-    ]);
-
-    if (response) {
-      try {
-        const parsed = JSON.parse(response);
-        if (parsed && Array.isArray(parsed.rows)) {
-          for (const row of parsed.rows) {
-            if (isValidRow(row)) {
-              allRows.push({
-                day: capitalizeDay(row.day),
-                period: Number(row.period),
-                courseCode: String(
-                  row.courseCode || row.course_code || "",
-                ).trim(),
-                facultyName: String(
-                  row.facultyName || row.faculty_name || row.faculty || "",
-                ).trim(),
-                roomNumber: String(
-                  row.roomNumber || row.room_number || row.room || "",
-                ).trim(),
-                section: String(row.section || "").trim(),
-                duration: normalizeDuration(row.duration),
-              });
-            } else {
-              allErrors.push({
-                line: chunkIdx * 100 + allRows.length,
-                message: `Invalid row from LLM: ${JSON.stringify(row)}`,
-              });
-            }
+  if (response) {
+    try {
+      const parsed = JSON.parse(response);
+      if (parsed && Array.isArray(parsed.rows)) {
+        for (const row of parsed.rows) {
+          if (isValidRow(row)) {
+            rows.push({
+              day: capitalizeDay(row.day),
+              period: Number(row.period),
+              courseCode: String(row.courseCode || row.course_code || "").trim(),
+              facultyName: String(row.facultyName || row.faculty_name || row.faculty || "").trim(),
+              roomNumber: String(row.roomNumber || row.room_number || row.room || "").trim(),
+              section: String(row.section || "").trim(),
+              duration: normalizeDuration(row.duration),
+            });
+          } else {
+            errors.push({
+              line: pageNum * 100 + rows.length,
+              message: `[Page ${pageNum}] Invalid row details: ${JSON.stringify(row)}`,
+            });
           }
         }
-      } catch (parseErr: any) {
-        allErrors.push({
-          line: chunkIdx * 100,
-          message: `Failed to parse Groq JSON response for chunk ${chunkIdx + 1}: ${parseErr.message}`,
-        });
       }
-    }
-
-    // Rate limit between chunks
-    if (chunkIdx < textChunks.length - 1) {
-      await new Promise((r) => setTimeout(r, 800));
+    } catch (parseErr: any) {
+      errors.push({
+        line: pageNum * 100,
+        message: `[Page ${pageNum}] Failed to parse Groq JSON response: ${parseErr.message}`,
+      });
     }
   }
 
-  // ===== PASS 2: COURSE CODE RESOLUTION =====
-  const unresolvedRows = allRows.filter(
+  // Resolve course abbreviations on the page (Pass 2)
+  const unresolvedRows = rows.filter(
     (r) => r.courseCode && !r.courseCode.match(/^[A-Z]{2,4}\d{3,5}[A-Z]?$/i),
   );
 
   if (unresolvedRows.length > 0) {
-    console.log(
-      `🔄 Pass 2: Resolving ${unresolvedRows.length} abbreviations to course codes...`,
-    );
+    console.log(`🔄 [Page ${pageNum}] Resolving ${unresolvedRows.length} abbreviations...`);
     try {
       const resolutionMap = await resolveCourseAbbreviations(
-        text,
+        pageText,
         unresolvedRows,
         apiKey,
       );
       if (resolutionMap) {
-        for (const row of allRows) {
+        for (const row of rows) {
           const key = row.courseCode.toUpperCase().trim();
           if (resolutionMap[key]) {
             const resolved = resolutionMap[key];
@@ -431,17 +415,14 @@ async function parseWithGroqTwoPass(
         }
       }
     } catch (resolveErr: any) {
-      allErrors.push({
-        line: -1,
-        message: `[WARNING] Pass 2 course code resolution failed: ${resolveErr.message}. Abbreviations may remain unresolved.`,
+      errors.push({
+        line: pageNum * 100 - 1,
+        message: `[WARNING][Page ${pageNum}] Pass 2 course code resolution failed: ${resolveErr.message}`,
       });
     }
   }
 
-  console.log(
-    `✅ Groq LLM parsed ${allRows.length} rows across ${textChunks.length} chunk(s)`,
-  );
-  return { rows: allRows, errors: allErrors, method: "groq-llm" };
+  return { rows, errors };
 }
 
 async function resolveCourseAbbreviations(
@@ -502,34 +483,66 @@ Output ONLY valid JSON. No markdown, no explanations.`,
 async function callGroqAPI(
   apiKey: string,
   messages: Array<{ role: string; content: string }>,
+  retries = 3,
+  delaySec = 10,
 ): Promise<string | null> {
-  const response = await fetch(
-    "https://api.groq.com/openai/v1/chat/completions",
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "llama-3.3-70b-versatile",
-        messages,
-        response_format: { type: "json_object" },
-        temperature: 0.0,
-        max_tokens: 8192,
-      }),
-    },
-  );
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const response = await fetch(
+        "https://api.groq.com/openai/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "llama-3.1-8b-instant",
+            messages,
+            response_format: { type: "json_object" },
+            temperature: 0.0,
+            max_tokens: 8192,
+          }),
+        },
+      );
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(
-      `Groq API returned status ${response.status}: ${errorText}`,
-    );
+      if (response.status === 429) {
+        // Rate limit hit - extract wait time
+        const errorData = await response.json().catch(() => ({}));
+        const message = errorData.error?.message || "";
+        
+        let waitMs = delaySec * 1000;
+        const match = message.match(/try again in ([\d\.]+)s/i);
+        if (match) {
+          waitMs = Math.ceil(parseFloat(match[1]) * 1000) + 1500; // Add 1.5s buffer
+        } else {
+          const retryHeader = response.headers.get("retry-after");
+          if (retryHeader) {
+            waitMs = (parseInt(retryHeader, 10) || delaySec) * 1000 + 1500;
+          }
+        }
+
+        console.warn(`⚠️ Groq Rate Limit (429) hit. Waiting ${Math.ceil(waitMs / 1000)}s before retry attempt ${attempt}/${retries}...`);
+        await new Promise((r) => setTimeout(r, waitMs));
+        continue;
+      }
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(
+          `Groq API returned status ${response.status}: ${errorText}`,
+        );
+      }
+
+      const resBody = await response.json();
+      return resBody.choices?.[0]?.message?.content || null;
+    } catch (err: any) {
+      if (attempt === retries) throw err;
+      console.warn(`⚠️ Groq API connection error on attempt ${attempt}/${retries}: ${err.message}. Retrying in ${delaySec}s...`);
+      await new Promise((r) => setTimeout(r, delaySec * 1000));
+    }
   }
-
-  const resBody = await response.json();
-  return resBody.choices?.[0]?.message?.content || null;
+  return null;
 }
 
 const TIMETABLE_EXTRACTION_PROMPT = `You are an expert academic scheduling parser for BIT Mesra (Birla Institute of Technology, Mesra) timetable documents.
@@ -623,7 +636,7 @@ function capitalizeDay(day: string): string {
   return dayMap[day.toLowerCase()] || day;
 }
 
-function parseWithRegex(text: string): {
+function parseWithRegex(text: string, pageNum: number): {
   rows: ParsedTimetableRow[];
   errors: Array<{ line: number; message: string }>;
 } {
@@ -693,8 +706,8 @@ function parseWithRegex(text: string): {
         });
       } else {
         errors.push({
-          line: i + 1,
-          message: `Could not determine period for: ${line}`,
+          line: pageNum * 100 + i,
+          message: `[Page ${pageNum}] Could not determine period for line: ${line}`,
         });
       }
     }
