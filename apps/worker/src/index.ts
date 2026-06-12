@@ -79,9 +79,22 @@ bulkWorker.on('failed', (job, err) => {
 
 logger.info('🚀 Samayak Worker started. Listening for jobs…');
 
+// Add a dummy HTTP server for Render's free tier web service port binding check
+import http from 'node:http';
+const port = process.env.PORT || 3000;
+const healthServer = http.createServer((req, res) => {
+  res.writeHead(200, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify({ status: 'ok', service: 'samayak-worker' }));
+});
+
+healthServer.listen(port, () => {
+  logger.info(`Health check server listening on port ${port}`);
+});
+
 // Graceful shutdown
 const shutdown = async () => {
   logger.info('Shutting down workers…');
+  healthServer.close();
   await pdfWorker.close();
   await bulkWorker.close();
   await connection.quit();
