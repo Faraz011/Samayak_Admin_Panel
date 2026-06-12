@@ -1,3 +1,6 @@
+import dns from 'node:dns';
+dns.setDefaultResultOrder('ipv4first');
+
 import * as fs from 'fs';
 import * as path from 'path';
 

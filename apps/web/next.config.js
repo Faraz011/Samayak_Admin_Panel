@@ -1,3 +1,6 @@
+const dns = require('node:dns');
+dns.setDefaultResultOrder('ipv4first');
+
 const path = require("path");
 const dotenv = require("dotenv");
 
@@ -12,23 +15,8 @@ const nextConfig = {
       "pino",
       "bullmq",
       "ioredis",
-      "tesseract.js",
-      "tesseract.js-core",
-      "pdfjs-dist",
-      "pdf-parse",
-      "pdf-to-png-converter",
       "sharp",
-      "canvas",
-      "@napi-rs/canvas",
-      "@napi-rs/canvas-linux-x64-gnu",
     ],
-    outputFileTracingRoot: path.join(__dirname, "../../"),
-    outputFileTracingIncludes: {
-      "/api/pdf-ingestions/process": [
-        "node_modules/@napi-rs/canvas/**/*",
-        "node_modules/@napi-rs/canvas-linux-x64-gnu/**/*",
-      ],
-    },
   },
   images: {
     domains: ["urgtpxnrutgeiyuxkawx.supabase.co"],

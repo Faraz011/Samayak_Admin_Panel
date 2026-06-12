@@ -42,37 +42,43 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Associated ingestion record not found' }, { status: 404 });
     }
 
-    // Call the dedicated inline processing route synchronously to ensure it completes under serverless envs
-    logger.info({ ingestion_id: ingestion.id }, 'Triggering inline PDF processing...');
-    const processUrl = new URL('/api/pdf-ingestions/process', request.url);
-    
-    // We call the process API route
-    const processResponse = await fetch(processUrl.toString(), {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-correlation-id': correlationId,
-      },
-      body: JSON.stringify({ ingestion_id: ingestion.id }),
-    });
+    // Queue the ingestion job in BullMQ to be processed asynchronously by the background worker
+    logger.info({ ingestion_id: ingestion.id }, 'Queueing PDF processing job in BullMQ...');
+    try {
+      const { Queue } = await import('bullmq');
+      const Redis = (await import('ioredis')).default;
+      
+      const connection = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
+        maxRetriesPerRequest: null,
+      });
 
-    if (!processResponse.ok) {
-      const errorText = await processResponse.text();
-      logger.error({ status: processResponse.status, errorText }, 'Inline processing endpoint returned error');
+      const queue = new Queue('pdf-ingest', { connection: connection as any });
+
+      await queue.add('process-pdf', {
+        file_path,
+        department_id,
+        correlation_id: correlationId,
+        ingestion_id: ingestion.id,
+      }, {
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 2000 },
+      });
+
+      await queue.close();
+      await connection.quit();
+      logger.info({ ingestion_id: ingestion.id }, 'PDF ingestion job successfully queued in Redis');
+    } catch (queueError: any) {
+      logger.error({ error: queueError.message, ingestion_id: ingestion.id }, 'Failed to queue job in Redis');
       return NextResponse.json(
-        { error: `Processing failed: ${errorText}` },
-        { status: processResponse.status }
+        { error: `Queueing failed: ${queueError.message}` },
+        { status: 500 }
       );
     }
 
-    const processResult = await processResponse.json();
-    logger.info({ ingestion_id: ingestion.id, processResult }, 'PDF ingestion processing finished');
-
     return NextResponse.json({
       success: true,
-      message: 'PDF ingestion completed inline',
+      message: 'PDF ingestion queued for background processing',
       correlationId,
-      result: processResult,
     });
   } catch (error: any) {
     logger.error({ error: error.message }, 'Failed to process PDF ingestion');
