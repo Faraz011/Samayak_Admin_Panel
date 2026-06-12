@@ -222,7 +222,46 @@ Built on the [Samayak Design System](https://serveranugatai-sudo.github.io/Samay
 
 ---
 
+## Deployment
+
+This platform is optimized for modern cloud deployments. Follow these instructions to deploy the complete stack:
+
+### 1. Database & Storage (Supabase)
+- Create a project on [Supabase](https://supabase.com).
+- Run the SQL scripts in [001_initial.sql](file:///c:/Users/Faraz/Samayak_Admin_Panel/supabase/migrations/001_initial.sql) and [seed.sql](file:///c:/Users/Faraz/Samayak_Admin_Panel/supabase/seed.sql) in the Supabase SQL editor.
+- Create a **Public** storage bucket named `pdf-ingestions`.
+
+### 2. Message Broker (Upstash Redis)
+- Create a Serverless Redis instance on [Upstash](https://upstash.com) (free tier).
+- Copy the **Redis URL** starting with `rediss://` (enables TLS).
+
+### 3. Frontend Web App (Vercel)
+- Deploy the repository to [Vercel](https://vercel.com).
+- Add the following environment variables:
+  - `NEXT_PUBLIC_SUPABASE_URL`
+  - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+  - `SUPABASE_SERVICE_ROLE_KEY`
+  - `NEXT_PUBLIC_GROQ_API_KEY`
+  - `REDIS_URL` (your Upstash URL starting with `rediss://`)
+
+### 4. Background Queue Worker (Render - Free Tier)
+- Create a new **Web Service** on [Render](https://render.com) (free tier).
+- Link your repository and set the following configurations:
+  - **Root Directory**: *Leave completely empty*
+  - **Dockerfile Path**: `apps/worker/Dockerfile`
+  - **Docker Build Context Directory**: `.`
+- Add the environment variables:
+  - `REDIS_URL` (your Upstash URL starting with `rediss://`)
+  - `SUPABASE_URL` (corresponds to `NEXT_PUBLIC_SUPABASE_URL`)
+  - `SUPABASE_SERVICE_ROLE_KEY`
+  - `NEXT_PUBLIC_GROQ_API_KEY` (or `GROQ_API_KEY`)
+  - `PORT`: `3000` (Render will automatically bind to this)
+- Render will compile the Docker container and start the worker along with its built-in HTTP health check server.
+
+---
+
 ## License
 
 MIT — Built for the Anugat AI hiring assignment.
+
 
